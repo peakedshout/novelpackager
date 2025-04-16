@@ -805,7 +805,7 @@ func blockURLs(b *rod.Browser) func() {
 	})
 	go router.Run()
 	return func() {
-		router.MustStop()
+		_ = router.Stop()
 	}
 }
 
