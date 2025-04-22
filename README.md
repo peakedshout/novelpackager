@@ -26,7 +26,7 @@ A novel crawler packaging epub tool implemented in pure golang using the rod fra
 - There is no executable command currently, see the command implemented in the specific source.
 
 ## Source list (click the link to view detailed source description)
-- [x] [bilinovel](./pkg/source/bilinovel)
+- [x] [bilinovel](./pkg/source/bilinovel) bilinovel is a light novel source with frequent updates and many anti-crawler strategies, but the automation attributes of rod can also be well adapted.
 - [ ] other
 
 ## TODO

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/peakedshout/go-pandorasbox/logger"
 	"github.com/peakedshout/novelpackager/pkg/model"
@@ -25,7 +26,7 @@ var (
 	UrlRoot    = `https://www.bilinovel.com`
 	UrlInfo    = `/novel/%s.html`
 	UrlCatalog = `/novel/%s/catalog`
-	UrlSearch  = `/search.html?searchkey=%s`
+	UrlSearch  = `/search.html`
 
 	UrlInfoPre = `/novel/`
 
@@ -482,14 +483,45 @@ func (p *Packager) checkoutChapter(page *rod.Page, info *model.ChapterInfo, data
 }
 
 func (p *Packager) searchList(sess *rodx.RodSession, name string, full bool, noImg bool) ([]model.SearchResult, error) {
-	turl := fmt.Sprintf(UrlRoot+UrlSearch, name)
+	turl := UrlRoot
 	var list []model.SearchResult
 	err := sess.PageLoop().DoWithNum(func(page *rod.Page) error {
+		// home page
 		err := page.Navigate(turl)
 		if err != nil {
 			p.logger.Warnf("Failed to navigate to URL %s: %v", turl, err)
 			return model.ErrPage.Errorf(turl, err)
 		}
+		err = page.WaitLoad()
+		if err != nil {
+			p.logger.Warnf("Failed to load page for URL %s: %v", turl, err)
+			return model.ErrPage.Errorf(turl, err)
+		}
+		searchE, err := page.Element(`body > div.page.page-home > div > div.white-content > a`)
+		if err != nil {
+			p.logger.Warnf("Failed to find search element for URL %s: %v", turl, err)
+			return model.ErrPage.Errorf(turl, err)
+		}
+		searchE.MustClick()
+
+		// search page
+		turl = UrlRoot + UrlSearch
+		err = page.WaitLoad()
+		if err != nil {
+			p.logger.Warnf("Failed to load page for URL %s: %v", turl, err)
+			return model.ErrPage.Errorf(turl, err)
+		}
+		inputE, err := page.Element(`#searchkey`)
+		if err != nil {
+			p.logger.Warnf("Failed to find input element for URL %s: %v", turl, err)
+			return err
+		}
+		err = inputE.Input(name)
+		if err != nil {
+			p.logger.Warnf("Failed to input element for URL %s: %v", turl, err)
+			return err
+		}
+		inputE.MustKeyActions().Press(input.Enter).MustDo()
 
 		defer utils.ExpireClose(page, p.timeout)()
 
@@ -789,6 +821,7 @@ func blockURLs(b *rod.Browser) func() {
 		`https://www.bilinovel.com/public/`,
 		`https://www.bilinovel.com/favicon.ico`,
 		`https://www.bilinovel.com/cdn-cgi/`,
+		`https://www.bilinovel.com/files/article/image/banner/`,
 	}
 	router := b.HijackRequests()
 	router.MustAdd("*", func(hijack *rod.Hijack) {
