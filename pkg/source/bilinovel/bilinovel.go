@@ -483,15 +483,19 @@ func (p *Packager) checkoutChapter(page *rod.Page, info *model.ChapterInfo, data
 }
 
 func (p *Packager) searchList(sess *rodx.RodSession, name string, full bool, noImg bool) ([]model.SearchResult, error) {
-	turl := UrlRoot
+	turl := ""
 	var list []model.SearchResult
 	err := sess.PageLoop().DoWithNum(func(page *rod.Page) error {
+		turl = UrlRoot
 		// home page
 		err := page.Navigate(turl)
 		if err != nil {
 			p.logger.Warnf("Failed to navigate to URL %s: %v", turl, err)
 			return model.ErrPage.Errorf(turl, err)
 		}
+
+		defer utils.ExpireClose(page, p.timeout)()
+
 		err = page.WaitLoad()
 		if err != nil {
 			p.logger.Warnf("Failed to load page for URL %s: %v", turl, err)
@@ -523,11 +527,18 @@ func (p *Packager) searchList(sess *rodx.RodSession, name string, full bool, noI
 		}
 		inputE.MustKeyActions().Press(input.Enter).MustDo()
 
-		defer utils.ExpireClose(page, p.timeout)()
+		utils.UpdateExpireClose(page, p.timeout)
 
 		for {
 			err = p.waitAndCheck404(page, turl)
 			if err != nil {
+				return err
+			}
+
+			// wait one page
+			err = page.WaitStable(3 * time.Second)
+			if err != nil {
+				p.logger.Warnf("Failed to wait stable for URL %s: %v", turl, err)
 				return err
 			}
 
