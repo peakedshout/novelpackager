@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/peakedshout/novelpackager/pkg/boot"
+	"github.com/peakedshout/novelpackager/pkg/web"
 	"github.com/spf13/cobra"
 )
 
@@ -20,4 +21,5 @@ var root = &cobra.Command{
 
 func init() {
 	boot.Init(root)
+	web.Init(root)
 }

@@ -2,12 +2,16 @@ module github.com/peakedshout/novelpackager
 
 go 1.23
 
+//replace (
+//	github.com/peakedshout/go-pandorasbox => ../go-pandorasbox
+//)
+
 require (
 	github.com/go-rod/rod v0.116.2
 	github.com/go-shiori/go-epub v1.2.1
 	github.com/google/uuid v1.6.0
 	github.com/jedib0t/go-pretty/v6 v6.6.7
-	github.com/peakedshout/go-pandorasbox v0.0.0-20250407161809-53dd5c043021
+	github.com/peakedshout/go-pandorasbox v0.0.0-20250427001509-05d8cb8d8adf
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
 )

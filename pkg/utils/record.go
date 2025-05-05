@@ -7,10 +7,10 @@ import (
 )
 
 type Record struct {
-	Config *model.PackageConfig    `json:"config"`
-	Info   *model.BookInfo         `json:"info"`
-	Data   *model.BookData         `json:"data"`
-	Cache  map[string]*ExportCache `json:"cache"`
+	//Config *model.PackageConfig    `json:"config"`
+	Info  *model.BookInfo         `json:"info"`
+	Data  *model.BookData         `json:"data"`
+	Cache map[string]*ExportCache `json:"cache"`
 }
 
 func SaveRecord(p string, r *Record, lc *LinkCache) error {

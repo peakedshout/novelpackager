@@ -15,24 +15,24 @@ func NewRodLoop(rc *RodContext) *RodLoop {
 	return &RodLoop{rc: rc}
 }
 
-func (rl *RodLoop) Do(fn func(b *rod.Browser) error) error {
-	rs, err := rl.rc.NewSession()
+func (rl *RodLoop) Do(ctx context.Context, fn func(b *rod.Browser) error) error {
+	rs, err := rl.rc.NewSession(ctx)
 	if err != nil {
 		return err
 	}
 	err = fn(rs.Browser())
 	_ = rs.Close()
 	if err != nil && rl.rc.ctx.Err() == nil {
-		return rl.Do(fn)
+		return rl.Do(ctx, fn)
 	}
 	return rl.rc.ctx.Err()
 }
 
-func (rl *RodLoop) DoWithNum(fn func(b *rod.Browser) error, num uint) error {
+func (rl *RodLoop) DoWithNum(ctx context.Context, fn func(b *rod.Browser) error, num uint) error {
 	if num <= 0 {
-		return rl.Do(fn)
+		return rl.Do(ctx, fn)
 	}
-	rs, err := rl.rc.NewSession()
+	rs, err := rl.rc.NewSession(ctx)
 	if err != nil {
 		return err
 	}
@@ -43,19 +43,19 @@ func (rl *RodLoop) DoWithNum(fn func(b *rod.Browser) error, num uint) error {
 		if num == 0 {
 			return err
 		}
-		return rl.DoWithNum(fn, num)
+		return rl.DoWithNum(ctx, fn, num)
 	}
 	return rl.rc.ctx.Err()
 }
 
 func (rl *RodLoop) DoWithTimeout(fn func(b *rod.Browser) error, timeout time.Duration) error {
 	if timeout <= 0 {
-		return rl.Do(fn)
+		return rl.Do(context.Background(), fn)
 	}
 	ctx, cl := context.WithTimeout(rl.rc.ctx, timeout)
 	defer cl()
 	for ctx.Err() == nil {
-		rs, err := rl.rc.NewSession()
+		rs, err := rl.rc.NewSession(ctx)
 		if err != nil {
 			return err
 		}

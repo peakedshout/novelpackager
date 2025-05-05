@@ -7,6 +7,12 @@ import (
 	"os"
 )
 
+func BytesHashSha256(b []byte) string {
+	h := sha256.New()
+	h.Write(b)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func FileHashSha256(p string) (string, error) {
 	f, err := os.Open(p)
 	if err != nil {

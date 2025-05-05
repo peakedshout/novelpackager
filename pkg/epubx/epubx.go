@@ -1,6 +1,7 @@
 package epubx
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/go-shiori/go-epub"
 	"github.com/google/uuid"
@@ -12,6 +13,11 @@ import (
 	"strings"
 )
 
+type FBytesData struct {
+	Name string
+	Data []byte
+}
+
 type Config struct {
 	Info     *model.BookInfo
 	Data     *model.BookData
@@ -20,21 +26,24 @@ type Config struct {
 
 	Lang        string
 	Output      string
+	OutputChan  chan *FBytesData
 	PackageMode model.PackageMode
 	Source      string
 }
 
 func Build(cfg *Config) error {
 	ec := &epubContext{
-		id:     uuid.New().String(),
-		info:   cfg.Info,
-		data:   cfg.Data,
-		lc:     cfg.ImgCache,
-		lang:   cfg.Lang,
-		output: cfg.Output,
-		mode:   cfg.PackageMode,
-		tmpDir: "",
-		source: cfg.Source,
+		id:         uuid.New().String(),
+		info:       cfg.Info,
+		data:       cfg.Data,
+		lc:         cfg.ImgCache,
+		vcm:        cfg.VC,
+		lang:       cfg.Lang,
+		output:     cfg.Output,
+		outputChan: cfg.OutputChan,
+		mode:       cfg.PackageMode,
+		tmpDir:     "",
+		source:     cfg.Source,
 	}
 	err := ec.build()
 	if err != nil {
@@ -52,9 +61,10 @@ type epubContext struct {
 
 	vcm map[int]map[int]bool
 
-	lang   string
-	output string
-	mode   model.PackageMode
+	lang       string
+	output     string
+	outputChan chan *FBytesData
+	mode       model.PackageMode
 
 	tmpDir string
 	source string
@@ -112,13 +122,15 @@ func (ec *epubContext) buildBookContentChapter() error {
 			}
 
 			fp := path.Join(ec.output, fmt.Sprintf("%s_%d_%s_%d_%s.epub", verifyFileName(ec.info.Name), i+1, verifyFileName(volume.Name), k+1, verifyFileName(chapter.Name)))
-			if ec.data.Volumes[i].Chapters[k].Loaded {
-				fh, _ := utils.FileHashSha256(fp)
-				if len(fh) != 0 && fh == ec.data.Volumes[i].Chapters[k].Hash {
+			if ec.outputChan == nil {
+				if ec.data.Volumes[i].Chapters[k].Loaded {
+					fh, _ := utils.FileHashSha256(fp)
+					if len(fh) != 0 && fh == ec.data.Volumes[i].Chapters[k].Hash {
+						continue
+					}
+				} else {
 					continue
 				}
-			} else {
-				continue
 			}
 
 			ep, err := epub.NewEpub(fmt.Sprintf("%s %s %s", ec.info.Name, volume.Name, chapter.Name))
@@ -156,13 +168,28 @@ func (ec *epubContext) buildBookContentChapter() error {
 					return err
 				}
 			}
-			err = ep.Write(fp)
-			if err != nil {
-				return err
-			}
-			fh, err := utils.FileHashSha256(fp)
-			if err != nil {
-				return err
+
+			var fh string
+			if ec.outputChan != nil {
+				bs := new(bytes.Buffer)
+				_, err = ep.WriteTo(bs)
+				if err != nil {
+					return err
+				}
+				ec.outputChan <- &FBytesData{
+					Name: fp,
+					Data: bs.Bytes(),
+				}
+				fh = utils.BytesHashSha256(bs.Bytes())
+			} else {
+				err = ep.Write(fp)
+				if err != nil {
+					return err
+				}
+				fh, err = utils.FileHashSha256(fp)
+				if err != nil {
+					return err
+				}
 			}
 			ec.data.Volumes[i].Chapters[k].Hash = fh
 		}
@@ -177,13 +204,15 @@ func (ec *epubContext) buildBookContentVolume() error {
 		}
 
 		fp := path.Join(ec.output, fmt.Sprintf("%s_%d_%s.epub", verifyFileName(ec.info.Name), i+1, verifyFileName(volume.Name)))
-		if ec.data.Volumes[i].Loaded {
-			fh, _ := utils.FileHashSha256(fp)
-			if len(fh) != 0 && fh == ec.data.Volumes[i].Hash {
+		if ec.outputChan == nil {
+			if ec.data.Volumes[i].Loaded {
+				fh, _ := utils.FileHashSha256(fp)
+				if len(fh) != 0 && fh == ec.data.Volumes[i].Hash {
+					continue
+				}
+			} else {
 				continue
 			}
-		} else {
-			continue
 		}
 
 		ep, err := epub.NewEpub(fmt.Sprintf("%s %s", ec.info.Name, volume.Name))
@@ -245,13 +274,28 @@ func (ec *epubContext) buildBookContentVolume() error {
 				}
 			}
 		}
-		err = ep.Write(fp)
-		if err != nil {
-			return err
-		}
-		fh, err := utils.FileHashSha256(fp)
-		if err != nil {
-			return err
+
+		var fh string
+		if ec.outputChan != nil {
+			bs := new(bytes.Buffer)
+			_, err = ep.WriteTo(bs)
+			if err != nil {
+				return err
+			}
+			ec.outputChan <- &FBytesData{
+				Name: fp,
+				Data: bs.Bytes(),
+			}
+			fh = utils.BytesHashSha256(bs.Bytes())
+		} else {
+			err = ep.Write(fp)
+			if err != nil {
+				return err
+			}
+			fh, err = utils.FileHashSha256(fp)
+			if err != nil {
+				return err
+			}
 		}
 		ec.data.Volumes[i].Hash = fh
 	}
@@ -260,10 +304,12 @@ func (ec *epubContext) buildBookContentVolume() error {
 
 func (ec *epubContext) buildBookContent() error {
 	fp := path.Join(ec.output, fmt.Sprintf("%s.epub", verifyFileName(ec.info.Name)))
-	if ec.data.Loaded {
-		fh, _ := utils.FileHashSha256(fp)
-		if len(fh) != 0 && fh == ec.data.Hash {
-			return nil
+	if ec.outputChan == nil {
+		if ec.data.Loaded {
+			fh, _ := utils.FileHashSha256(fp)
+			if len(fh) != 0 && fh == ec.data.Hash {
+				return nil
+			}
 		}
 	}
 
@@ -335,13 +381,28 @@ func (ec *epubContext) buildBookContent() error {
 			}
 		}
 	}
-	err = ep.Write(fp)
-	if err != nil {
-		return err
-	}
-	fh, err := utils.FileHashSha256(fp)
-	if err != nil {
-		return err
+
+	var fh string
+	if ec.outputChan != nil {
+		bs := new(bytes.Buffer)
+		_, err = ep.WriteTo(bs)
+		if err != nil {
+			return err
+		}
+		ec.outputChan <- &FBytesData{
+			Name: fp,
+			Data: bs.Bytes(),
+		}
+		fh = utils.BytesHashSha256(bs.Bytes())
+	} else {
+		err = ep.Write(fp)
+		if err != nil {
+			return err
+		}
+		fh, err = utils.FileHashSha256(fp)
+		if err != nil {
+			return err
+		}
 	}
 	ec.data.Hash = fh
 	return nil

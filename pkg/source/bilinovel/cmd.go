@@ -1,6 +1,7 @@
 package bilinovel
 
 import (
+	"context"
 	"fmt"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
@@ -62,7 +63,7 @@ var searchCmd = &cobra.Command{
 		}
 		defer rc.Close()
 		pr := NewPackager(rc, pcfg)
-		results, err := pr.Search(args[0], sas.Full, sas.NoImg)
+		results, err := pr.Search(context.Background(), args[0], sas.Full, sas.NoImg)
 		if err != nil {
 			return err
 		}
@@ -120,7 +121,7 @@ var infoCmd = &cobra.Command{
 
 		ias := utils.GetKeyT[infoArgs](cmd, "args")
 
-		info, err := pr.GetInfo(args[0], ias.Full)
+		info, err := pr.GetInfo(context.Background(), args[0], ias.Full)
 		if err != nil {
 			return err
 		}
@@ -176,7 +177,7 @@ var downloadCmd = &cobra.Command{
 
 		pas := utils.GetKeyT[model.PackageConfig](cmd, "args")
 
-		err = pr.Download(args[0], pas)
+		err = pr.Download(context.Background(), args[0], pas)
 
 		return err
 	},

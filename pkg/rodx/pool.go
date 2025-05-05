@@ -41,16 +41,16 @@ func (p *RodPool) worker() {
 		case <-p.ctx.Done():
 			return
 		case task := <-p.tasks:
-			p.rDo(task)
+			p.rDo(p.ctx, task)
 			p.twg.Done()
 		}
 	}
 }
 
-func (p *RodPool) Do(task func(*rod.Browser) error) bool {
+func (p *RodPool) Do(ctx context.Context, task func(*rod.Browser) error) bool {
 	select {
 	case <-p.ctx.Done():
-		p.rDo(task)
+		p.rDo(ctx, task)
 		return false
 	case p.tasks <- task:
 		p.twg.Add(1)
@@ -67,8 +67,8 @@ func (p *RodPool) Wait() {
 	p.twg.Wait()
 }
 
-func (p *RodPool) rDo(task func(*rod.Browser) error) {
-	rs, err := p.rc.NewSession()
+func (p *RodPool) rDo(ctx context.Context, task func(*rod.Browser) error) {
+	rs, err := p.rc.NewSession(ctx)
 	if err != nil {
 		p.rc.logger.Warn("rod session error", "err", err)
 		return
@@ -76,6 +76,6 @@ func (p *RodPool) rDo(task func(*rod.Browser) error) {
 	err = task(rs.Browser())
 	_ = rs.Close()
 	if err != nil && p.ctx.Err() == nil {
-		p.rDo(task)
+		p.rDo(ctx, task)
 	}
 }

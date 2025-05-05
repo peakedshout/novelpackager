@@ -1,6 +1,7 @@
 package bilinovel
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -68,8 +69,8 @@ func NewPackager(ctx *rodx.RodContext, cfg *Config) *Packager {
 	return p
 }
 
-func (p *Packager) GetInfo(id string, full bool) (*model.BookInfo, error) {
-	sess, err := p.rc.NewSession()
+func (p *Packager) GetInfo(ctx context.Context, id string, full bool) (*model.BookInfo, error) {
+	sess, err := p.rc.NewSession(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +90,8 @@ func (p *Packager) GetInfo(id string, full bool) (*model.BookInfo, error) {
 	return info, nil
 }
 
-func (p *Packager) Search(name string, full bool, noImg bool) ([]model.SearchResult, error) {
-	sess, err := p.rc.NewSession()
+func (p *Packager) Search(ctx context.Context, name string, full bool, noImg bool) ([]model.SearchResult, error) {
+	sess, err := p.rc.NewSession(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -99,14 +100,20 @@ func (p *Packager) Search(name string, full bool, noImg bool) ([]model.SearchRes
 	return p.searchList(sess, name, full, noImg)
 }
 
-func (p *Packager) Download(id string, pcfg *model.PackageConfig) error {
-	sess, err := p.rc.NewSession()
+func (p *Packager) Download(ctx context.Context, id string, pcfg *model.PackageConfig) error {
+	sess, err := p.rc.NewSession(ctx)
 	if err != nil {
 		return err
 	}
 	defer sess.Close()
 	defer blockURLs(sess.Browser())()
-	return p.download(sess, id, pcfg)
+	return p.download(sess, &downloadContext{
+		id:     id,
+		pcfg:   pcfg,
+		pr:     utils.NewProgress(-1),
+		record: nil,
+		lc:     nil,
+	})
 }
 
 func (p *Packager) getBookInfo(sess *rodx.RodSession, id string) (*model.BookInfo, error) {
@@ -358,7 +365,7 @@ func (p *Packager) refreshToken(page *rod.Page, volume *model.VolumeInfo) error 
 	return nil
 }
 
-func (p *Packager) checkoutChapter(page *rod.Page, info *model.ChapterInfo, data *model.ChapterData, lc *utils.LinkCache) error {
+func (p *Packager) checkoutChapter(page *rod.Page, info *model.ChapterInfo, data *model.ChapterData, ctx *downloadContext) error {
 	turl := UrlRoot + info.Ahref
 	err := page.Navigate(turl)
 	if err != nil {
@@ -439,7 +446,7 @@ func (p *Packager) checkoutChapter(page *rod.Page, info *model.ChapterInfo, data
 					return err
 				}
 
-				id, err := lc.Set(src, bs)
+				id, err := ctx.lc.Set(src, bs)
 				if err != nil {
 					p.logger.Warnf("Failed to set resource in cache for URL %s: %v", turl, err)
 					return err
@@ -470,7 +477,6 @@ func (p *Packager) checkoutChapter(page *rod.Page, info *model.ChapterInfo, data
 		}
 
 	}
-	p.logger.Info("Successfully fetched chapter for URL:", turl, info.Name)
 
 	for _, datum := range data.Data {
 		hash.Write([]byte(datum))
@@ -535,26 +541,37 @@ func (p *Packager) searchList(sess *rodx.RodSession, name string, full bool, noI
 				return err
 			}
 
-			// wait one page
-			err = page.WaitStable(3 * time.Second)
-			if err != nil {
-				p.logger.Warnf("Failed to wait stable for URL %s: %v", turl, err)
-				return err
-			}
-
-			info, err := page.Info()
-			if err != nil {
-				p.logger.Warnf("Failed to get info for URL %s: %v", turl, err)
-				return err
-			}
-			if strings.HasPrefix(info.URL, UrlRoot+UrlInfoPre) {
-				result, err := p.searchOne(page, info.URL)
+			// wait page
+			var hasList bool
+			for {
+				err = page.WaitStable(200 * time.Millisecond)
 				if err != nil {
-					p.logger.Warnf("Failed to search one for URL %s: %v", turl, err)
+					p.logger.Warnf("Failed to wait stable for URL %s: %v", turl, err)
 					return err
 				}
-				list = append(list, *result)
-				return nil
+				hasList, _, err = page.Has(`body > div.page.page-finish > div > div.module > ol`)
+				if err != nil {
+					p.logger.Warnf("Failed to check has element for URL %s: %v", turl, err)
+					return err
+				}
+				if hasList {
+					break
+				}
+				// wait one page
+				info, err := page.Info()
+				if err != nil {
+					p.logger.Warnf("Failed to get info for URL %s: %v", turl, err)
+					return err
+				}
+				if strings.HasPrefix(info.URL, UrlRoot+UrlInfoPre) {
+					result, err := p.searchOne(page, info.URL)
+					if err != nil {
+						p.logger.Warnf("Failed to search one for URL %s: %v", turl, err)
+						return err
+					}
+					list = append(list, *result)
+					return nil
+				}
 			}
 
 			el, err := page.Element(`body > div.page.page-finish > div > div.module > ol`)
@@ -882,6 +899,6 @@ func waitImgDataSrc(element *rod.Element) ([]byte, string, error) {
 	return bs, *src, nil
 }
 
-func getCachePath(r *utils.Record) string {
-	return path.Join(r.Config.OutputPath, fmt.Sprintf(CacheFile, r.Info.Id))
+func getCachePath(ctx *downloadContext) string {
+	return path.Join(ctx.pcfg.OutputPath, fmt.Sprintf(CacheFile, ctx.id))
 }

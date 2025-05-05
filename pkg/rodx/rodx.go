@@ -8,6 +8,7 @@ import (
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/utils"
 	"github.com/google/uuid"
+	"github.com/peakedshout/go-pandorasbox/ccw/ctxtool"
 	"github.com/peakedshout/go-pandorasbox/logger"
 	"github.com/peakedshout/go-pandorasbox/tool/xerror"
 	"os"
@@ -65,7 +66,7 @@ func NewRodContext(cfg *RodConfig) (*RodContext, error) {
 	if cfg.Delay > 0 {
 		rc.delay = time.Duration(cfg.Delay) * time.Millisecond
 	}
-	bin, err := rc.lookup(cfg.BinDir)
+	bin, err := lookupBin(cfg.BinDir, rc.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -92,14 +93,14 @@ func (rc *RodContext) Close() error {
 	return err
 }
 
-func (rc *RodContext) NewSession() (*RodSession, error) {
+func (rc *RodContext) NewSession(ctx context.Context) (*RodSession, error) {
 	rc.sessionMux.Lock()
 	defer rc.sessionMux.Unlock()
 	if rc.ctx.Err() != nil {
 		return nil, rc.ctx.Err()
 	}
 	id := uuid.New().String()
-	rs, err := rc.launch(id)
+	rs, err := rc.launch(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +117,8 @@ func (rc *RodContext) Pool(num int) *RodPool {
 	return NewRodPool(rc, num)
 }
 
-func (rc *RodContext) launch(id string) (*RodSession, error) {
-	ctx, cl := context.WithCancelCause(rc.ctx)
+func (rc *RodContext) launch(ctx context.Context, id string) (*RodSession, error) {
+	ctx, cl := ctxtool.ContextsWithCancelCause(rc.ctx, ctx)
 	rs := &RodSession{
 		rc:       rc,
 		id:       id,
@@ -148,7 +149,7 @@ func (rc *RodContext) launchRod(ctx context.Context, userdata string) (*launcher
 		Devtools(rc.view).
 		NoSandbox(true)
 
-	b := rod.New().Context(rc.ctx).SlowMotion(rc.delay).NoDefaultDevice()
+	b := rod.New().Context(ctx).SlowMotion(rc.delay).NoDefaultDevice()
 
 	launch, err := l.Launch()
 	if err != nil {
@@ -162,7 +163,7 @@ func (rc *RodContext) launchRod(ctx context.Context, userdata string) (*launcher
 	return l, b, nil
 }
 
-func (rc *RodContext) lookup(bp string) (string, error) {
+func lookupBin(bp string, l logger.Logger) (string, error) {
 	lookPath, has := launcher.LookPath()
 	if has {
 		return lookPath, nil
@@ -175,7 +176,7 @@ func (rc *RodContext) lookup(bp string) (string, error) {
 		Revision: launcher.RevisionDefault,
 		Hosts:    []launcher.Host{launcher.HostGoogle, launcher.HostNPM, launcher.HostPlaywright},
 		RootDir:  bp,
-		Logger:   utils.Log(rc.logger.Info),
+		Logger:   utils.Log(l.Info),
 		LockPort: defaults.LockPort,
 	}
 	return browser.Get()
