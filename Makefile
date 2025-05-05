@@ -10,11 +10,10 @@ zip:
 	zip -r _pack/novelpackager.zip  build -x build/build
 
 pre_web:
-	cd ./pkg/web/frontend && npm run build;
+	cd ./pkg/web/frontend && npm install && npm run build;
 
-web:
+web: pre_web
 	go run ./cmd/novelpackager web
 
-webD:
-	cd ./pkg/web/frontend && npm run build;
+webD: pre_web
 	go run ./cmd/novelpackager web --view
