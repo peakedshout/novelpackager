@@ -30,7 +30,7 @@ A novel crawler packaging epub tool implemented in pure golang using the rod fra
 - [ ] other
 
 ## TODO
-- [ ] webui?
+- [x] webui (Use `novelpackager web` to start, and then operate through webui. You can see the parameters for specific settings. Simple cache optimization is built in)
 - [ ] Add timed check update logic (used to obtain updated chapters or volumes in time)
 - [ ] Remote operation mode
 - [x] Currently it has satisfied my personal use (downloaded offline content and reading it 😊)
